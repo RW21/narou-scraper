@@ -1,0 +1,34 @@
+- name: Scrape
+#  Assumes Ubuntu lts 22.04
+  hosts: narou-3
+  tasks:
+    - name: Set timezone to Tokyo
+      become: yes
+      command: timedatectl set-timezone Asia/Tokyo
+
+    - name: Create destination directory for scripts
+      file:
+        path: "~/scripts"
+        state: directory
+        mode: 0775
+
+    - name: Copy the scripts
+      copy:
+        src: "{{ item }}"
+        dest: "~/scripts"
+      with_fileglob: "../*.py"
+
+    - name: Copy requirements.txt
+      copy:
+        src: ../requirements.txt
+        dest: ~/requirements.txt
+
+    - name: Install pip
+      become: yes
+      apt:
+        name: python3-pip
+        update_cache: yes
+
+    - name: Install from requirements.txt
+      pip:
+        requirements: ~/requirements.txt
