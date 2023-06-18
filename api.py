@@ -1,8 +1,8 @@
-import urllib.error
-import urllib.request
+from urllib.request import build_opener, HTTPCookieProcessor, Request
+import urllib
 # Wrapper which does retries
 from time import sleep
-
+from http.cookiejar import Cookie, CookieJar
 from logger import logger
 
 
@@ -12,9 +12,35 @@ def request_with_retries(url, max_attempts=5):
     success = False
     last_exception = None
 
+    # Create a cookie for the over18 check
+    c = Cookie(
+        version=0,
+        name='over18',
+        value='yes',
+        port=None,
+        port_specified=False,
+        domain='.syosetu.com',
+        domain_specified=True,
+        domain_initial_dot=True,
+        path='/',
+        path_specified=True,
+        secure=False,
+        expires=None,
+        discard=True,
+        comment=None,
+        comment_url=None,
+        rest={},
+        rfc2109=False,
+    )
+
+    cj = CookieJar()
+    cj.set_cookie(c)
+
+    opener = build_opener(HTTPCookieProcessor(cj))
+
     while not success and attempts < max_attempts:
         try:
-            response = urllib.request.urlopen(url)
+            response = opener.open(url)
             success = True
         except urllib.error.HTTPError as e:
             if e.code == 404:

@@ -5,6 +5,7 @@ import urllib.request
 from datetime import datetime
 from timeit import default_timer
 from typing import Optional, Generator
+from functools import wraps
 
 import yaml
 from bs4 import BeautifulSoup
@@ -14,6 +15,22 @@ from args import script_args
 from logger import logger
 from models import NovelInfoModel, NovelImpressionModel, db_name, initialize_db
 from nid import Nid
+
+
+def timing_decorator(func):
+    @wraps(func)
+    def wrapper(nid, conn):
+        start_time = default_timer()
+        logger.info(f"Start scraping {nid}")
+        try:
+            result = func(nid, conn)
+        except Exception as e:
+            logger.error(f"Failed {nid} {e}")
+            raise
+        end_time = default_timer()
+        logger.info(f"Scraped {nid} {end_time - start_time}s elapsed")
+        return result
+    return wrapper
 
 
 def get_detail_page_soup(nid: str, is_r18=False) -> Optional[BeautifulSoup]:
@@ -139,6 +156,7 @@ def extract_novel_info(detail_page_soup: BeautifulSoup) -> NovelInfoModel:
     Extracts novel info from detail page soup.
     Uses scraped website instead of api to retrieve more information.
     """
+    print(detail_page_soup)
     rows = detail_page_soup.find(id='noveltable2').find_all('tr')
 
     try:
@@ -204,10 +222,17 @@ def extract_novel_info(detail_page_soup: BeautifulSoup) -> NovelInfoModel:
             elif field_name == 'character_count':
                 res[field_name] = int(cell_content[:-2].replace(',', ''))
 
+
+    # r18 won't have genre?
+    try:
+        genre = detail_page_soup.find('th', text='ジャンル').find_next('td').text
+    except AttributeError:
+        genre = ''
+
     novel_info = NovelInfoModel(
         title=detail_page_soup.select_one('h1 a').text,
         summary=detail_page_soup.find('td', class_='ex').text,
-        genre=detail_page_soup.find('th', text='ジャンル').find_next('td').text,
+        genre=genre,
         keywords=[kw for kw in keywords.split(' ') if kw.strip()],
         impression_id=get_impression_id(detail_page_soup),
         nid=nid,
@@ -274,6 +299,7 @@ def is_r18_novel(supposed_detail_page: BeautifulSoup) -> bool:
     return supposed_detail_page.find('title').text == '年齢確認'
 
 
+@timing_decorator
 def scrape(nid: str, connection: sqlite3.Connection):
     soup = get_detail_page_soup(nid)
 
@@ -332,6 +358,10 @@ if __name__ == '__main__':
     initialize_db()
     conn = sqlite3.connect(db_name)
 
+    if script_args.nid:
+        scrape(Nid(script_args.nid).id, conn)
+        exit()
+
     start_from, end_with = Nid(script_args.start_from), Nid(script_args.end_with)
 
     if start_from > end_with:
@@ -340,17 +370,7 @@ if __name__ == '__main__':
         gen = start_from.generate_nids()
 
     for nid in gen:
-
-        start_time = default_timer()
-        logger.info(f"Start scraping {nid}")
-        try:
-            scrape(nid, conn)
-        except Exception as e:
-            logger.error(f"Failed {nid} {e}")
-            raise e
-
-        end_time = default_timer()
-        logger.info(f"Scraped {nid} {end_time - start_time}s elapsed")
+        scrape(nid, conn)
 
         if nid == script_args.end_with:
             break
