@@ -1,7 +1,7 @@
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Union, List
+from typing import Union, List, Optional
 
 from logger import logger
 
@@ -68,6 +68,36 @@ def create_novel_info_table(cur: sqlite3.Cursor):
 
 
 @dataclass
+class NovelContentModel(ModelBaseClass):
+    nid: int
+    content: str
+    created_datetime: datetime
+    last_updated_datetime: datetime
+    part: Optional[str] = field(default=None)
+
+    class Meta:
+        db_table = 'novel_content'
+
+    def sqlite_save(self, cursor: sqlite3.Cursor):
+        cursor.execute(
+            f'INSERT OR REPLACE INTO {self.Meta.db_table} VALUES (?,?,?,?,?)',
+            (self.nid, self.content, self.created_datetime, self.last_updated_datetime, self.part))
+
+
+def create_novel_content_table(cur: sqlite3.Cursor):
+    cur.execute(
+        f'CREATE TABLE IF NOT EXISTS novel_content ('
+        'nid VARCHAR(7),'
+        'content text,'
+        'created_datetime DATETIME,'
+        'last_updated_datetime DATETIME,'
+        'part text NULL,'
+        'PRIMARY KEY (nid),'
+        'FOREIGN KEY (nid) REFERENCES novel_info(nid))'
+    )
+
+
+@dataclass
 class NovelImpressionModel(ModelBaseClass):
     nid: int
 
@@ -88,7 +118,6 @@ class NovelImpressionModel(ModelBaseClass):
             f'INSERT OR REPLACE INTO {self.Meta.db_table} VALUES (?,?,?,?,?,?,?)',
             (self.nid, self.user_id, self.created_datetime, self.impression_hitokoto, self.impression_yoiten,
              self.impression_kininaruten, self.on_part))
-
 
 
 def create_novel_impression_table(cur: sqlite3.Cursor):
@@ -115,12 +144,14 @@ CREATE TABLE IF NOT EXISTS scrape_history(
 nid VARCHAR(7) PRIMARY KEY,
 last_info_scrape_datetime DATETIME NULL,
 last_impression_scrape_datetime DATETIME NULL,
+last_content_scrape_datetime DATETIME NULL,
 r18 BOOLEAN,
 FOREIGN KEY (nid) REFERENCES novel_info(nid)
 )""")
 
     create_novel_info_table(cur)
     create_novel_impression_table(cur)
+    create_novel_content_table(cur)
 
     conn.commit()
     conn.close()
