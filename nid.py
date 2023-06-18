@@ -29,34 +29,33 @@ def decrement_suffix(string):
         return string[0] + decrement_letter(string[1])
 
 
-def generate_nids(nid="N0000AA", reverse=False):
-    suffix = nid[-2:]
-    number = int(nid[1:-2])
-
-    if not reverse:
-        while True:
-            yield f'N{number:04}{suffix}'
-
-            number += 1
-
-            if number > 9999:
-                number = 0
-                suffix = increment_suffix(suffix)
-
-    while True:
-        yield f'N{number:04}{suffix}'
-
-        number -= 1
-
-        if number < 0:
-            number = 9999
-            suffix = decrement_suffix(suffix)
-
-
 class Nid:
     """
     Just used for comparison
     """
+
+    def generate_nids(self, reverse=False):
+        suffix = self.id[-2:]
+        number = int(self.id[1:-2])
+
+        if not reverse:
+            while True:
+                yield f'N{number:0>4}{suffix}'
+
+                number += 1
+
+                if number > 9999:
+                    number = 0
+                    suffix = increment_suffix(suffix)
+
+        while True:
+            yield f'N{number:0>4}{suffix}'
+
+            number -= 1
+
+            if number < 0:
+                number = 9999
+                suffix = decrement_suffix(suffix)
 
     def __init__(self, id):
         id = id.upper()
