@@ -13,11 +13,14 @@ from api import request_with_retries
 from args import script_args
 from logger import logger
 from models import NovelInfoModel, NovelImpressionModel, db_name, initialize_db
-from nid import generate_nids, Nid
+from nid import Nid
 
 
-def get_detail_page_soup(nid: str) -> Optional[BeautifulSoup]:
+def get_detail_page_soup(nid: str, is_r18=False) -> Optional[BeautifulSoup]:
     url = f'https://ncode.syosetu.com/novelview/infotop/ncode/{nid}/'
+
+    if is_r18:
+        url = f'https://novel18.syosetu.com/novelview/infotop/ncode/{nid}/'
 
     response = request_with_retries(url)
     if response is None:
@@ -27,11 +30,13 @@ def get_detail_page_soup(nid: str) -> Optional[BeautifulSoup]:
     return soup
 
 
-def impression_soup_generator(impression_id: int) -> Generator[BeautifulSoup, None, None]:
+def impression_soup_generator(impression_id: int, is_r18=False) -> Generator[BeautifulSoup, None, None]:
     """
     Use generator to save memory
     """
     url = f'https://novelcom.syosetu.com/impression/list/ncode/{impression_id}/'
+    if is_r18:
+        url = f'https://novelcom18.syosetu.com/impression/list/ncode/{impression_id}/'
 
     response = urllib.request.urlopen(url)
     first_impression_soup = response.read()
@@ -269,7 +274,7 @@ def is_r18_novel(supposed_detail_page: BeautifulSoup) -> bool:
     return supposed_detail_page.find('title').text == '年齢確認'
 
 
-def scrape(nid, connection: sqlite3.Connection):
+def scrape(nid: str, connection: sqlite3.Connection):
     soup = get_detail_page_soup(nid)
 
     if soup is None or is_error_novel(soup):
@@ -286,12 +291,18 @@ def scrape(nid, connection: sqlite3.Connection):
         """,
                        (nid, is_r18))
         connection.commit()
+
+    if script_args.skip_r18 and is_r18:
+        logger.info(f'Skip R18 novel {nid}')
         return
+
+    if is_r18:
+        soup = get_detail_page_soup(nid, is_r18=True)
 
     novel_info = extract_novel_info(soup)
     novel_info.sqlite_save(cursor)
 
-    for impression_soup in impression_soup_generator(novel_info.impression_id):
+    for impression_soup in impression_soup_generator(novel_info.impression_id, is_r18=is_r18):
         impressions = extract_impressions(impression_soup)
         for impression in impressions:
             impression.sqlite_save(cursor)
@@ -321,10 +332,12 @@ if __name__ == '__main__':
     initialize_db()
     conn = sqlite3.connect(db_name)
 
-    if Nid(script_args.start_from) > Nid(script_args.end_with):
-        gen = generate_nids(nid=script_args.start_from, reverse=True)
+    start_from, end_with = Nid(script_args.start_from), Nid(script_args.end_with)
+
+    if start_from > end_with:
+        gen = start_from.generate_nids(reverse=True)
     else:
-        gen = generate_nids(nid=script_args.start_from)
+        gen = start_from.generate_nids()
 
     for nid in gen:
 
