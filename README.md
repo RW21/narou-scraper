@@ -1,5 +1,4 @@
-# narou-analysis
-
+# narou-scraper
 ```
 usage: main.py [-h] [--reset] [--start-from START_FROM] [--end-with END_WITH]
                [--log-file LOG_FILE] [--skip-r18 SKIP_R18] [--nid NID]
