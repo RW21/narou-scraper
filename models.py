@@ -38,12 +38,19 @@ class NovelInfoModel(ModelBaseClass):
     # 評価ポイント
     review_point: Union[int, None] = field(default=None)
 
+    class Meta:
+        db_table = 'novel_info'
+
     def sqlite_save(self, cursor: sqlite3.Cursor):
         cursor.execute(
-            'INSERT OR REPLACE INTO novel_info VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            f'INSERT OR REPLACE INTO {self.Meta.db_table} '
+            '(nid, title, summary, keywords, genre, released_datetime, last_updated_datetime, impression_count, '
+            'review_count, bookmark_count, total_review_point, review_point, character_count, user_id, impression_id) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             (self.nid, self.title, self.summary, ','.join(self.keywords), self.genre, self.released_datetime,
              self.last_updated_datetime, self.impression_count, self.review_count, self.bookmark_count,
-             self.total_review_point, self.review_point, self.character_count, self.user_id, self.impression_id))
+             self.total_review_point, self.review_point, self.character_count, self.user_id, self.impression_id)
+        )
 
 
 def create_novel_info_table(cur: sqlite3.Cursor):
@@ -69,30 +76,40 @@ def create_novel_info_table(cur: sqlite3.Cursor):
 
 @dataclass
 class NovelContentModel(ModelBaseClass):
-    nid: int
+    nid: str
+    title: str
     content: str
     created_datetime: datetime
     last_updated_datetime: datetime
+    page_num: int
     part: Optional[str] = field(default=None)
+    pre_content: Optional[str] = field(default=None)
+    post_content: Optional[str] = field(default=None)
 
     class Meta:
         db_table = 'novel_content'
 
     def sqlite_save(self, cursor: sqlite3.Cursor):
         cursor.execute(
-            f'INSERT OR REPLACE INTO {self.Meta.db_table} VALUES (?,?,?,?,?)',
-            (self.nid, self.content, self.created_datetime, self.last_updated_datetime, self.part))
+            f'INSERT OR REPLACE INTO {self.Meta.db_table}'
+            '(nid, title, content, created_datetime, last_updated_datetime, part, page_num, pre_content, post_content) VALUES (?,?,?,?,?,?,?,?,?)',
+            (self.nid, self.title, self.content, self.created_datetime, self.last_updated_datetime, self.part, self.page_num, self.pre_content, self.post_content),
+        )
 
 
 def create_novel_content_table(cur: sqlite3.Cursor):
     cur.execute(
         f'CREATE TABLE IF NOT EXISTS novel_content ('
         'nid VARCHAR(7),'
+        'title text,'
         'content text,'
+        'pre_content text NULL,'
+        'post_content text NULL,'
+        'page_num integer NULL,'
         'created_datetime DATETIME,'
         'last_updated_datetime DATETIME,'
         'part text NULL,'
-        'PRIMARY KEY (nid),'
+        'PRIMARY KEY (nid, created_datetime),'
         'FOREIGN KEY (nid) REFERENCES novel_info(nid))'
     )
 
@@ -115,9 +132,12 @@ class NovelImpressionModel(ModelBaseClass):
 
     def sqlite_save(self, cursor: sqlite3.Cursor):
         cursor.execute(
-            f'INSERT OR REPLACE INTO {self.Meta.db_table} VALUES (?,?,?,?,?,?,?)',
-            (self.nid, self.user_id, self.created_datetime, self.impression_hitokoto, self.impression_yoiten,
-             self.impression_kininaruten, self.on_part))
+            f'INSERT OR REPLACE INTO {self.Meta.db_table} '
+            '(nid, user_id, created_datetime, impression_hitokoto, impression_yoiten, impression_kininaruten, on_part) '
+            'VALUES (?,?,?,?,?,?,?)',
+            (self.nid, self.user_id, self.created_datetime, self.impression_hitokoto,
+             self.impression_yoiten, self.impression_kininaruten, self.on_part)
+        )
 
 
 def create_novel_impression_table(cur: sqlite3.Cursor):

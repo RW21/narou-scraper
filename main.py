@@ -2,14 +2,14 @@ import os
 import sqlite3
 import urllib.request
 from datetime import datetime
-from timeit import default_timer
 from functools import wraps
+from timeit import default_timer
 
 import yaml
-from bs4 import BeautifulSoup
 
 from args import script_args
-from impressions import extract_impressions, impression_soup_generator
+from content import novel_content_generator
+from impression import extract_impressions, impression_soup_generator
 from logger import logger
 from models import db_name, initialize_db
 from nid import Nid
@@ -29,12 +29,8 @@ def timing_decorator(func):
         end_time = default_timer()
         logger.info(f"Scraped {nid} {end_time - start_time}s elapsed")
         return result
+
     return wrapper
-
-
-# 179,232件 -> 179232
-def extract_件_string(s: str) -> int:
-    return int(s[:-1].replace(',', ''))
 
 
 def query_nids_between_time(start_inc: datetime, end_inc: datetime) -> list[str]:
@@ -72,29 +68,18 @@ def query_nids_between_time(start_inc: datetime, end_inc: datetime) -> list[str]
     return nids
 
 
-def is_error_novel(supposed_detail_page: BeautifulSoup) -> bool:
-    """
-    Checks if the detail page is a deleted novel.
-    """
-    return supposed_detail_page.find('title').text == 'エラー'
-
-
-def is_r18_novel(supposed_detail_page: BeautifulSoup) -> bool:
-    return supposed_detail_page.find('title').text == '年齢確認'
-
-
 @timing_decorator
 def scrape(nid: str, connection: sqlite3.Connection):
     soup = get_detail_page_soup(nid)
 
-    if soup is None or is_error_novel(soup):
+    is_error = soup.find('title').text == 'エラー'
+    if soup is None or is_error:
         logger.info(f'Novel {nid} returned error page')
         return
 
-    is_r18 = is_r18_novel(soup)
-
     cursor = connection.cursor()
 
+    is_r18 = soup.find('title').text == '年齢確認'
     if is_r18:
         cursor.execute("""
         INSERT OR REPLACE INTO scrape_history (nid, r18) VALUES (?, ?)
@@ -112,22 +97,41 @@ def scrape(nid: str, connection: sqlite3.Connection):
     novel_info = extract_novel_info(soup)
     novel_info.sqlite_save(cursor)
 
-    for impression_soup in impression_soup_generator(novel_info.impression_id, is_r18=is_r18):
-        impressions = extract_impressions(impression_soup)
-        for impression in impressions:
-            impression.sqlite_save(cursor)
-
     cursor.execute(
         """
-        INSERT OR REPLACE INTO scrape_history (nid, last_info_scrape_datetime, last_impression_scrape_datetime) VALUES (?, ?, ?)
+        INSERT OR REPLACE INTO scrape_history (nid, last_info_scrape_datetime) VALUES (?, ?)
         """,
-        (nid, datetime.now(), datetime.now())
+        (nid, datetime.now())
     )
+
+    if not script_args.skip_impression:
+        for impression_soup in impression_soup_generator(novel_info.impression_id, is_r18=is_r18):
+            impressions = extract_impressions(impression_soup)
+            for impression in impressions:
+                impression.sqlite_save(cursor)
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO scrape_history (nid, last_impression_scrape_datetime) VALUES (?, ?)
+            """,
+            (nid, datetime.now())
+        )
+
+    if not script_args.skip_content:
+        for content in novel_content_generator(nid, novel_info, is_r18=is_r18):
+            content.sqlite_save(cursor)
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO scrape_history (nid, last_content_scrape_datetime) VALUES (?, ?)
+            """,
+            (nid, datetime.now())
+        )
+
     connection.commit()
 
 
 if __name__ == '__main__':
-
     if script_args.reset:
         try:
             os.remove(db_name)
@@ -137,8 +141,6 @@ if __name__ == '__main__':
         logger.info('Reset scrape history')
         exit()
 
-    logger.info(f'Starting scraping from {script_args.start_from} to {script_args.end_with}')
-
     initialize_db()
     conn = sqlite3.connect(db_name)
 
@@ -147,6 +149,7 @@ if __name__ == '__main__':
         exit()
 
     start_from, end_with = Nid(script_args.start_from), Nid(script_args.end_with)
+    logger.info(f'Starting scraping from {script_args.start_from} to {script_args.end_with}')
 
     if start_from > end_with:
         gen = start_from.generate_nids(reverse=True)

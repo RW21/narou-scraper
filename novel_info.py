@@ -5,8 +5,7 @@ import yaml
 from bs4 import BeautifulSoup
 
 from api import request_with_retries
-from main import extract_件_string
-from impressions import get_impression_id
+from impression import get_impression_id
 from models import NovelInfoModel
 
 
@@ -15,7 +14,6 @@ def extract_novel_info(detail_page_soup: BeautifulSoup) -> NovelInfoModel:
     Extracts novel info from detail page soup.
     Uses scraped website instead of api to retrieve more information.
     """
-    print(detail_page_soup)
     rows = detail_page_soup.find(id='noveltable2').find_all('tr')
 
     try:
@@ -71,7 +69,7 @@ def extract_novel_info(detail_page_soup: BeautifulSoup) -> NovelInfoModel:
                     if c:
                         cell_content = c
                         break
-                res[field_name] = extract_件_string(cell_content)
+                res[field_name] = int(cell_content[:-1].replace(',', ''))
             elif field_name in ['total_review_point', 'review_point']:
                 try:
                     res[field_name] = int(cell_content.replace('pt', '').replace(',', ''))
@@ -80,7 +78,6 @@ def extract_novel_info(detail_page_soup: BeautifulSoup) -> NovelInfoModel:
                     res[field_name] = None
             elif field_name == 'character_count':
                 res[field_name] = int(cell_content[:-2].replace(',', ''))
-
 
     # r18 won't have genre?
     try:
