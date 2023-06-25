@@ -30,7 +30,6 @@ def extract_novel_info(detail_page_soup: BeautifulSoup) -> NovelInfoModel:
         # Sometimes there is no hyperlink to user page
         res = request_with_retries("https://api.syosetu.com/novelapi/api/?ncode={}&of=u".format(nid))
         data = yaml.safe_load(res)
-        print(data)
         user_id = int(data[1]['userid'])
 
     cell_to_field = {

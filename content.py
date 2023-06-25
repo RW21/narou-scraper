@@ -103,5 +103,5 @@ def novel_content_generator(nid: str, info: NovelInfoModel, is_r18=False) -> Gen
                 post_content=post,
                 page_num=count  # an assumption
             )
-            logger.info(f'[{count}/{num_of_pages}] {nid}')
+            logger.info(f'[{count}/{num_of_pages}] {nid} content')
             yield novel_content

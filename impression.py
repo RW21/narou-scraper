@@ -5,6 +5,7 @@ from typing import Generator
 
 from bs4 import BeautifulSoup
 
+from api import request_with_retries
 from logger import logger
 from models import NovelImpressionModel
 
@@ -18,7 +19,7 @@ def extract_impressions(impression_soup: BeautifulSoup) -> list[NovelImpressionM
 
     datetime_regex_pattern = re.compile(r"\d{4}年 \d{2}月\d{2}日 \d{2}時\d{2}分")
 
-    nid = impression_soup.find('div', id="contents_main").find('a')['href'].split('/')[-2]
+    nid = impression_soup.select_one('html body div#container div#contents_main a')['href'].split('/')[-2]
 
     for comment in comments:
         comment_info = comment.find('div', class_='comment_info comment_authorbox')
@@ -71,8 +72,7 @@ def impression_soup_generator(impression_id: int, is_r18=False) -> Generator[Bea
     if is_r18:
         url = f'https://novelcom18.syosetu.com/impression/list/ncode/{impression_id}/'
 
-    response = urllib.request.urlopen(url)
-    first_impression_soup = response.read()
+    first_impression_soup = request_with_retries(url)
     first_impression_soup = BeautifulSoup(first_impression_soup, 'html.parser')
 
     # determine number of pages
@@ -95,10 +95,10 @@ def impression_soup_generator(impression_id: int, is_r18=False) -> Generator[Bea
 
     # get all impression pages
     for page in range(2, max_page + 1):
-        logger.info(f'Mass impression; Getting impression page {page} of {max_page}')
+        logger.info(f'[{page}/{max_page}] impression')
+
         url = f'https://novelcom.syosetu.com/impression/list/ncode/{impression_id}/?p={page}'
-        response = urllib.request.urlopen(url)
-        impression_page = response.read()
+        impression_page = request_with_retries(url)
         impression_page = BeautifulSoup(impression_page, 'html.parser')
         yield impression_page
 

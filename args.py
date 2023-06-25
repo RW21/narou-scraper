@@ -58,6 +58,8 @@ parser.add_argument("--skip-content", action="store_true", default=False,
                     help="When this is enabled, it will skip scraping novel content (default: %(default)s)")
 parser.add_argument("--skip-impression", action="store_true", default=False,
                     help="When this is enabled, it will skip scraping novel impression(default: %(default)s)")
+parser.add_argument("--skip-existing", action="store_true", default=False,
+                    help="When this is enabled, it will skip scraping data has been previously scraped(default: %(default)s)")
 
 parser.set_defaults(log_file="scrape.log", reset=False, start_from="N9999ZZ", end_with="N0000AA", skip_r18=False)
 

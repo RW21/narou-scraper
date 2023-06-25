@@ -72,60 +72,82 @@ def query_nids_between_time(start_inc: datetime, end_inc: datetime) -> list[str]
 def scrape(nid: str, connection: sqlite3.Connection):
     soup = get_detail_page_soup(nid)
 
-    is_error = soup.find('title').text == 'エラー'
-    if soup is None or is_error:
+    is_error = False
+    if soup is None:
+        is_error = True
+
+    if soup is not None and soup.find('title').text == 'エラー':
+        is_error = True
+
+    if is_error:
         logger.info(f'Novel {nid} returned error page')
         return
 
     cursor = connection.cursor()
 
-    is_r18 = soup.find('title').text == '年齢確認'
-    if is_r18:
-        cursor.execute("""
-        INSERT OR REPLACE INTO scrape_history (nid, r18) VALUES (?, ?)
-        """,
-                       (nid, is_r18))
-        connection.commit()
+    is_r18 = bool(soup.find('span', {'id': 'age_limit'}))
+
+    cursor.execute("SELECT 1 FROM scrape_history WHERE nid = ?", (nid,))
+    exists = cursor.fetchone()
+
+    if exists is None:
+        cursor.execute(
+            """
+            INSERT INTO scrape_history (nid, r18) VALUES (?, ?)
+            """,
+            (nid, is_r18)
+        )
 
     if script_args.skip_r18 and is_r18:
         logger.info(f'Skip R18 novel {nid}')
         return
 
-    if is_r18:
-        soup = get_detail_page_soup(nid, is_r18=True)
+    cursor.execute("SELECT last_impression_scrape_datetime, last_content_scrape_datetime FROM scrape_history WHERE nid = ?", (nid,))
+    result = cursor.fetchone()
+
+    already_scraped_impression, already_scraped_content = map(bool, result)
+    will_skip_content = (script_args.skip_existing and already_scraped_content) or script_args.skip_content
+    will_skip_impression = (script_args.skip_existing and already_scraped_impression) or script_args.skip_impression
+
+    if will_skip_content:
+        logger.info(f'Skip content scraping for {nid}')
+    if will_skip_impression:
+        logger.info(f'Skip impression scraping for {nid}')
 
     novel_info = extract_novel_info(soup)
     novel_info.sqlite_save(cursor)
 
     cursor.execute(
         """
-        INSERT OR REPLACE INTO scrape_history (nid, last_info_scrape_datetime) VALUES (?, ?)
+        UPDATE scrape_history SET last_info_scrape_datetime = ? WHERE nid = ?
         """,
-        (nid, datetime.now())
+        (datetime.now(), nid)
     )
 
-    if not script_args.skip_impression:
+    if not will_skip_impression:
         for impression_soup in impression_soup_generator(novel_info.impression_id, is_r18=is_r18):
             impressions = extract_impressions(impression_soup)
             for impression in impressions:
                 impression.sqlite_save(cursor)
 
+        # Here we don't need to check for existence because we know row for nid must exist at this point
         cursor.execute(
             """
-            INSERT OR REPLACE INTO scrape_history (nid, last_impression_scrape_datetime) VALUES (?, ?)
+            UPDATE scrape_history SET last_impression_scrape_datetime = ? WHERE nid = ?
             """,
-            (nid, datetime.now())
+            (datetime.now(), nid)
         )
 
-    if not script_args.skip_content:
+    if not will_skip_content:
         for content in novel_content_generator(nid, novel_info, is_r18=is_r18):
             content.sqlite_save(cursor)
 
+        # Similarly, updating without checking for existence
         cursor.execute(
             """
-            INSERT OR REPLACE INTO scrape_history (nid, last_content_scrape_datetime) VALUES (?, ?)
+            UPDATE scrape_history SET last_content_scrape_datetime = ? WHERE nid = ?
             """,
-            (nid, datetime.now())
+            (datetime.now(), nid)
         )
 
     connection.commit()
